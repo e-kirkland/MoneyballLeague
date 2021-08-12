@@ -127,3 +127,17 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Postgres
+postgresql/postgres-data/
+postgresql/
+
+# Redis
+redis/redis-data/
+
+# VS CODE
+.vscode/
+
+# Data
+data
+

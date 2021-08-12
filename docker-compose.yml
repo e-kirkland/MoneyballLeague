@@ -1,0 +1,59 @@
+version: '3'
+services:
+  postgresql: # Creating postgres db in local container
+    image: postgres
+    container_name: "capman_postgres"
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes: # Booting postgres with schema/tables defined
+        - ./postgresql/schema_dump.sql:/docker-entrypoint-initdb.d/schema_dump.sql
+        # Persisting postgres data
+        - ./postgresql/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+    restart: on-failure
+
+  capman_redis:
+    image: "redis:alpine"
+    container_name: "capman_redis"
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis/redis-data:/var/lib/redis
+    environment:
+      - REDIS_REPLICATION_MODE=master
+
+  capmanapi:
+    build: .
+    image: capman_api_img
+    container_name: capman_api
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./output:/app/output
+      - ./scripts:/app/scripts
+      - ./app.py:/app/app.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=UTF-8
+      - POSTGRES_CONTAINER=${POSTGRES_CONTAINER}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_SERVER=${REDIS_SERVER}
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 12000M
+    shm_size: '12gb'
+    restart: on-failure
