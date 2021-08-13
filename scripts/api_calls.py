@@ -222,6 +222,122 @@ def cache_most_recent_transaction(transactions):
 
     return
 
+def get_my_roster(roster_id):
 
+    query = f"""SELECT * FROM playersb WHERE roster_id='{roster_id}';"""
+    rosterdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    rosterdf.sort_values(by=['position', 'salary'], inplace=True)
 
+    rosterdf['salary'] = rosterdf['salary'].apply(lambda x: str(x))
+
+    rosterdf.fillna('0', inplace=True)
+
+    message = """| Position | Player | Team | Salary | \n"""
+
+    for n, row in rosterdf.iterrows():
+        playermessage = '| ' + row['position'] + ' | ' + row['player'] + ' | ' + row['team'] + ' | ' + row['salary'] + ' |\n'
+        message = message + playermessage
+
+    return message
+
+def get_team_name(roster_id):
+
+    query = f"""SELECT display_name FROM rosters WHERE roster_id='{roster_id}';"""
+    namedf = pgt.df_from_postgres(query, 'postgres', 'rosters')
+    print("NAMEDF: ", namedf.head())
+
+    teamname = namedf['display_name'][0]
+
+    returnstring = f'Current roster for _{teamname}_: \n'
+
+    return returnstring
+
+def get_team_cap(roster_id):
+
+    query = f"""SELECT display_name FROM rosters WHERE roster_id='{roster_id}';"""
+    namedf = pgt.df_from_postgres(query, 'postgres', 'rosters')
+    print("NAMEDF: ", namedf.head())
+
+    teamname = namedf['display_name'][0]
+
+    returnstring = f'Current cap space for _{teamname}_: \n'
+
+    return returnstring
+
+def get_my_cap(roster_id):
+
+    query = f"""SELECT SUM(salary) FROM playersb WHERE roster_id='{roster_id}';"""
+    capdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    print("CAPDF: ", capdf.head())
+
+    currentcap = capdf['sum'][0]
+
+    leaguecap = 200
+
+    available = leaguecap - currentcap
+
+    returnstring = f'Current cap spending is *${str(currentcap)}*. \n\nAvailable cap room is *${str(available)}*.'
+
+    return returnstring
+
+def get_salary_csv():
+
+    query = f"""SELECT * FROM playersb;"""
+    playersdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    print("PLAYERSDF: ", playersdf.head())
+    playersdf.to_csv('output/players.csv')
+    print("STORED PLAYERS")
+
+    return 'output/players.csv'
+
+def reset_salary_data(fname):
+
+    try:
+
+        # Open csv as df
+        df = pd.read_csv(fname)
+
+        # Format for push to postgres
+        keepcols = ['player_id', 'player', 'position', 'team', 'salary', 'roster_id']
+        df = df[keepcols]
+
+        # Upload to postgres
+        pgt.df_to_postgres(df, 'postgres', 'playersb', method='replace')
+
+        return "SUCCESSFULLY UPDATED LEAGUE"
+
+    except Exception as e:
+
+        return f"FAILED UPLOADING TO POSTGRES: {e}"
+
+def get_roster_id(text):
+
+    # Cleaning text
+    text = text.lower().strip()
+
+    lookupdict = {
+        1: ['eddie', 'kirkland', 'process', 'trust'],
+        2: ['cory', 'draper', 'tampa', 'badger'],
+        3: ['will', 'fortanbary', 'essendon', 'bombers'],
+        4: ['jeff', 'herbst', 'kickers', 'qb'],
+        5: ['isaac', 'wesley', 'cleveland', 'steamers'],
+        6: ['nick', 'nicholas', 'bazemore', 'tech', 'gtech', 'ga'],
+        7: ['ryan', 'atkinson', 'rules', 'sucks'],
+        8: ['chris', 'kirkland', 'acworth', 'eagles', 'lame'],
+        9: ['jeremy', 'hess', 'big', 'home'],
+        10: ['alex', 'aghoian', 'beats', 'ray']
+    }
+
+    roster_id = '9'
+
+    for n in range(1,11):
+        id = n
+        array = lookupdict[n]
+        for word in array:
+            if word in text:
+                roster_id = str(id)
+                break
+            else:
+                pass
     
+    return str(roster_id)

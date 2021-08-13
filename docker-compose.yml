@@ -50,6 +50,8 @@ services:
       - POSTGRES_CONTAINER=${POSTGRES_CONTAINER}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_SERVER=${REDIS_SERVER}
+      - SLACK_API_TOKEN=${SLACK_API_TOKEN}
+      - SLACK_SECRET=${SLACK_SECRET}
     deploy:
       resources:
         limits:
