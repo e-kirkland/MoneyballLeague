@@ -14,15 +14,21 @@ from slackeventsapi import SlackEventAdapter
 
 # Local imports
 from scripts import api_calls as api
+from scripts import initialize as init
 
 # Instantiating app
 app = Flask(__name__)
 # Enable CORS
 cors = CORS(app)
 
+# Getting tokens from env
+bot_token = os.getenv('SLACK_BOT_TOKEN')
+user_token = os.getenv('SLACK_USER_TOKEN')
+secret = os.getenv('SLACK_SECRET')
+
 # Instantiating slackbot
-slack_event_adapter = SlackEventAdapter("f249d9ef105e738a415ffca11dcff8fc",'/slack/events',app)
-client = slack.WebClient(token="xoxb-71093634791-2401906948000-srytssMi3rRaL7OKlFZ1324T")
+slack_event_adapter = SlackEventAdapter(secret,'/slack/events',app)
+client = slack.WebClient(token=bot_token)
 BOT_ID = client.api_call("auth.test")['user_id']
 
 league_users = {
@@ -52,30 +58,39 @@ def file_upload(payload):
         file = event['file_id']
         channel = event['channel_id']
 
-        user_client = slack.WebClient(token="xoxp-71093634791-1053929078738-2372330400502-c8d8afaf078ab3086fed818e29bcb71c")
-        result = user_client.api_call('files.sharedPublicURL', params={'file':file, 'channel':channel})
-        print("RESULT: ", result)
+        try:
+        
+            user_client = slack.WebClient(token=user_token)
+            result = user_client.api_call('files.sharedPublicURL', params={'file':file, 'channel':channel})
+            print("RESULT: ", result)
 
-        url = result['file']['url_private_download']
-        print("URL: ", url)
+            url = result['file']['url_private_download']
+            print("URL: ", url)
 
-        token = 'xoxb-71093634791-2401906948000-srytssMi3rRaL7OKlFZ1324T'
-        resp = requests.get(url, headers={'Authorization': 'Bearer %s' % token})
+            token = user_token
+            resp = requests.get(url, headers={'Authorization': 'Bearer %s' % token})
 
-        headers = resp.headers['content-disposition']
-        output = 'output/'
-        fname = output + re.findall("filename=(.*?);", headers)[0].strip("'").strip('"')
+            print("RESP: ", resp.headers)
 
-        assert not os.path.exists(fname), print("File already exists. Please remove/rename and re-run")
-        out_file = open(fname, mode="wb+")
-        print("FNAME: ", fname)
-        out_file.write(resp.content)
-        out_file.close()
+            headers = resp.headers['content-disposition']
+            output = 'output/'
+            fname = output + re.findall("filename=(.*?);", headers)[0].strip("'").strip('"')
 
-        response = api.reset_salary_data(fname)
-        print("RESPONSE: ", response)
-    
-        client.chat_postMessage(channel=channel_id, text='League updated, you are ready to roll!')
+            assert not os.path.exists(fname), print("File already exists. Please remove/rename and re-run")
+            out_file = open(fname, mode="wb+")
+            print("FNAME: ", fname)
+            out_file.write(resp.content)
+            out_file.close()
+
+            response = api.reset_salary_data(fname)
+            print("RESPONSE: ", response)
+        
+            client.chat_postMessage(channel=channel_id, text='League updated, you are ready to roll!')
+
+        except Exception as e:
+
+            print(f"Exception: {e}")
+            return e, 500
 
     return Response(), 200
 
@@ -248,7 +263,42 @@ def reset_salaries():
 
     return Response(), 200
 
+# Setup league with one slash comman, including leaguID
+@app.route('/initialize', methods=['POST'])
+def initialize_league():
+    data = request.form
+    print("DATA: ", data)
+    channel_id = data.get('channel_id')
+    user_id = data.get('user_id')
+    text = data.get('text')
 
+    # Pull leagueID, salaryCap, rosterMin, rosterMax from text
+    text_list = text.split(' ')
+    leagueID=text_list[0]
+    salaryCap=text_list[1]
+    rosterMin=text_list[2]
+    rosterMax=text_list[3]
+
+    # Setting up league
+    client.chat_postMessage(channel=channel_id, text=f"Let's do this. Setting up your league with id {leagueID}...")
+
+    # Setting league player info from Sleeper
+    try:
+        # Setting up postgresql with schema based on leagueID
+        return_val = init.setup_league(leagueID, salaryCap, rosterMin, rosterMax)
+
+        # Confirming league setup
+        client.chat_postMessage(channel=channel_id, text=f"Your league is set up. Now it's time to fill in salary info.")
+
+        return_val = reset_salaries()
+
+        return return_val, 200
+
+    except Exception as e:
+
+        return e, 500
+
+    
 
 @app.route('/api/test/', methods=['GET'])
 def test():

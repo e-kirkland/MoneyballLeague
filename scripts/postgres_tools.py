@@ -104,3 +104,4 @@ def df_from_postgres(query, database, table):
     print(f'Queried {start_count} records from {table}')
 
     return df
+

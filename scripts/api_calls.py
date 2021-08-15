@@ -16,24 +16,7 @@ import datetime as dt
 from sleeper_wrapper import League, Players
 
 # Local imports
-from scripts import redis_tools as redis
 from scripts import postgres_tools as pgt
-
-def set_league_id(leagueID):
-    try:
-        return_message = redis.set_league_id(leagueID)
-        return return_message
-    except Exception as e:
-        return e
-
-def get_league_id():
-    try:
-        leagueID = redis.get_league_id()
-
-        return leagueID
-
-    except Exception as e:
-        return e 
 
 def get_players():
     try:
@@ -63,9 +46,6 @@ def get_players():
 
 def setup_league(leagueID):
     try:
-        # Setting league id in cache
-        return_message = set_league_id(leagueID)
-        print(return_message)
 
         # Pulling players roster
         playerdf = get_players()
@@ -73,33 +53,30 @@ def setup_league(leagueID):
         print(playerdf.head())
 
         # Get all roster data
-        teams = get_teams()
+        teams = get_teams(leagueID)
 
         # Matching players to rosters based on current teams 
         playerdf['roster_id'] = playerdf['player_id'].apply(lambda x: match_player_to_roster(x, teams))
 
         # Storing player data to postgres
-        pgt.df_to_postgres(playerdf, 'postgres', 'playersb', method='replace')
+        pgt.df_to_postgres(playerdf, 'postgres', 'players', method='replace')
 
         # Get current transactions
-        transactions = get_transactions()
+        transactions = get_transactions(leagueID)
 
         # Store most recent transaction
-        cache_most_recent_transaction(transactions)
+        transaction_id = get_most_recent_transaction(transactions)
 
-        return 'LEAGUE SETUP SUCCESSFULLY'
+        return transaction_id
 
     except Exception as e:
         return print(e)
 
-def get_transactions():
+def get_transactions(leagueID):
     try:
-        # Get league id
-        league_id = get_league_id()
-        print(league_id)
 
         # Instantiate league based on id
-        league = League(league_id)
+        league = League(leagueID)
 
         # Blank transactions value to start
         transactions = []
@@ -163,22 +140,20 @@ def compile_team_data(users, rosters):
 
         return e
 
-def get_teams():
+def get_teams(leagueID):
 
     try:
 
-        # Get league id
-        league_id = get_league_id()
-        print(league_id)
-
         # Instantiate league based on id
-        league = League(league_id)
+        league = League(leagueID)
 
         # Get data on all league users for team metadata
         users = league.get_users()
 
         # Get data on all rosters
         rosters = league.get_rosters()
+
+        print("ROSTERS: ", rosters)
 
         # Compile team info
         teamsdf = compile_team_data(users, rosters)
@@ -209,7 +184,7 @@ def match_player_to_roster(player, rosters):
 
     return match_id
 
-def cache_most_recent_transaction(transactions):
+def get_most_recent_transaction(transactions):
 
     # Get most recent transaction
     transaction = transactions[0]
@@ -217,15 +192,12 @@ def cache_most_recent_transaction(transactions):
 
     print("TRANSACTION: ", transactionid)
 
-    message = redis.set_most_recent_transaction(transactionid)
-    print(message)
-
-    return
+    return str(transactionid)
 
 def get_my_roster(roster_id):
 
-    query = f"""SELECT * FROM playersb WHERE roster_id='{roster_id}';"""
-    rosterdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    query = f"""SELECT * FROM players WHERE roster_id='{roster_id}';"""
+    rosterdf = pgt.df_from_postgres(query, 'postgres', 'players')
     rosterdf.sort_values(by=['position', 'salary'], inplace=True)
 
     rosterdf['salary'] = rosterdf['salary'].apply(lambda x: str(x))
@@ -266,8 +238,8 @@ def get_team_cap(roster_id):
 
 def get_my_cap(roster_id):
 
-    query = f"""SELECT SUM(salary) FROM playersb WHERE roster_id='{roster_id}';"""
-    capdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    query = f"""SELECT SUM(salary) FROM players WHERE roster_id='{roster_id}';"""
+    capdf = pgt.df_from_postgres(query, 'postgres', 'players')
     print("CAPDF: ", capdf.head())
 
     currentcap = capdf['sum'][0]
@@ -282,8 +254,8 @@ def get_my_cap(roster_id):
 
 def get_salary_csv():
 
-    query = f"""SELECT * FROM playersb;"""
-    playersdf = pgt.df_from_postgres(query, 'postgres', 'playersb')
+    query = f"""SELECT * FROM players;"""
+    playersdf = pgt.df_from_postgres(query, 'postgres', 'players')
     print("PLAYERSDF: ", playersdf.head())
     playersdf.to_csv('output/players.csv')
     print("STORED PLAYERS")
@@ -302,7 +274,7 @@ def reset_salary_data(fname):
         df = df[keepcols]
 
         # Upload to postgres
-        pgt.df_to_postgres(df, 'postgres', 'playersb', method='replace')
+        pgt.df_to_postgres(df, 'postgres', 'players', method='replace')
 
         return "SUCCESSFULLY UPDATED LEAGUE"
 
